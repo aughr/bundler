@@ -74,6 +74,63 @@ describe "bundle cache" do
     end
   end
 
+  describe "when there is a built-in gem" do
+    let(:remote_version) { "1.0.0" }
+
+    before :each do
+      build_repo2 do
+        build_gem "builtin_gem", remote_version do |s|
+          s.summary = "This builtin_gem is bundled with Ruby"
+        end
+      end
+
+      build_gem "builtin_gem", builtin_version, :to_system => true do |s|
+        s.summary = "This builtin_gem is bundled with Ruby"
+      end
+
+      install_gemfile <<-G
+        source "file://#{gem_repo2}"
+        gem 'builtin_gem', '#{builtin_version}'
+      G
+
+      FileUtils.rm("#{system_gem_path}/cache/builtin_gem-#{builtin_version}.gem")
+
+      bundle :cache
+    end
+
+    describe "when the remote and builtin versions are the same" do
+      let(:builtin_version) { remote_version }
+
+      it "copies the .gem file to vendor/cache" do
+        expect(out).to include("builtin")
+        expect(out).to include("Fetching source index from")
+        expect(bundled_app("vendor/cache/builtin_gem-#{remote_version}.gem")).to exist
+      end
+
+      it "succeeds in finding the cached copy the next time without going to the network" do
+        bundle :cache
+        expect(out).to_not include("Fetching source index from")
+        expect(out).to_not include("* builtin_gem-#{remote_version}.gem")
+      end
+    end
+
+    describe "when the remote and builtin versions differ in specificity" do
+      let(:builtin_version) { "#{remote_version}.0" }
+
+      it "copies the .gem file to vendor/cache" do
+        expect(out).to include("builtin")
+        expect(out).to include("Fetching source index from")
+        expect(bundled_app("vendor/cache/builtin_gem-#{remote_version}.gem")).to exist
+      end
+
+      it "succeeds in finding the cached copy the next time by resolving the remote version" do
+        bundle :cache
+        expect(out).to include("Fetching source index from")
+        expect(out).to_not include("* builtin_gem-#{remote_version}.gem")
+      end
+    end
+  end
+
   describe "when there are also git sources" do
     before do
       build_git "foo"

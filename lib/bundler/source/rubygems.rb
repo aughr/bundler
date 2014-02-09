@@ -139,12 +139,25 @@ module Bundler
     private
 
       def cached_gem(spec)
-        possibilities = @caches.map { |p| "#{p}/#{spec.file_name}" }
-        cached_gem = possibilities.find { |p| File.exist?(p) }
+        cached_gem = locate_cached_gem(spec)
         unless cached_gem
+          if builtin_gem?(spec) && (remote_spec = remote_specs.search(spec).find {|s| s.source_uri })
+            # sometimes the resolved remote gem has a different exact version
+            # than the builtin one
+            #
+            # for example, Ruby 2.0 bundle test-unit 2.0.0.0, but the remote
+            # gem is test-unit 2.0.0
+            cached_gem = locate_cached_gem(remote_spec)
+            return cached_gem || Fetcher.download_gem_from_uri(remote_spec, remote_spec.source_uri)
+          end
           raise Bundler::GemNotFound, "Could not find #{spec.file_name} for installation"
         end
         cached_gem
+      end
+
+      def locate_cached_gem(spec)
+        possibilities = @caches.map { |p| "#{p}/#{spec.file_name}" }
+        possibilities.find { |p| File.exist?(p) }
       end
 
       def normalize_uri(uri)
@@ -273,6 +286,13 @@ module Bundler
         end
       end
 
+      def builtin_gem?(spec)
+        # Ruby 2.1-style
+        return true if spec.summary =~ /is bundled with Ruby/
+
+        # Ruby 2.0 style
+        spec.loaded_from.include?("specifications/default/")
+      end
     end
   end
 end
